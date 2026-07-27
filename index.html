@@ -80,7 +80,13 @@ body::before{
 .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 20px}
 
 /* ── 頁首 ───────────────────────────────── */
-.masthead{padding:64px 0 20px}
+.masthead{position:relative;padding:64px 0 20px}
+.masthead-doodle{
+  display:none;position:absolute;top:0;right:0;width:150px;height:200px;
+  color:var(--ink-soft);opacity:.55;transform:rotate(3deg);pointer-events:none;
+}
+@media (min-width:760px){ .masthead-doodle{display:block} }
+@media (min-width:980px){ .masthead-doodle{width:190px;height:250px;top:-10px} }
 .stamp{
   display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.16em;
   color:var(--red);border:1.5px solid var(--red);border-radius:2px;
@@ -261,6 +267,17 @@ footer{
 
 <div class="wrap">
   <header class="masthead">
+    <svg class="masthead-doodle" viewBox="0 0 140 200" aria-hidden="true">
+      <circle cx="76" cy="34" r="22" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="68" cy="30" r="1.6" fill="currentColor"/>
+      <circle cx="84" cy="30" r="1.6" fill="currentColor"/>
+      <path d="M67 40 Q76 46 85 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <path d="M76 56 Q73 90 76 118" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M76 66 Q45 50 30 18" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M76 78 Q106 88 118 72" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M76 118 Q56 140 48 178" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M76 118 Q98 140 100 178" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+    </svg>
     <div class="stamp" id="stamp">ARCHIVE</div>
     <h1 id="siteTitle"></h1>
     <p class="byline">作者 <b id="author"></b></p>
