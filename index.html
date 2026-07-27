@@ -307,7 +307,7 @@ footer{
     <input class="scrub" id="scrub" type="range" min="1" value="1" aria-label="跳到指定頁">
     <button class="iconbtn" id="btnGrid" aria-label="全部頁面縮圖">▦</button>
     <label class="speed">速度
-      <input id="fps" type="range" min="1" max="16" value="5" aria-label="播放速度">
+      <input id="fps" type="range" min="0" max="9" step="1" value="2" aria-label="播放速度">
       <b id="fpsVal">5 fps</b>
     </label>
   </div>
@@ -320,6 +320,14 @@ footer{
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(DIGITS, "0");
   const src = (book, n) => `${FOLDER}/${book.id}/${pad(n)}.${EXT}`;
+
+  /* 播放速度：index 對應每頁停留秒數。快的用 fps 顯示（連續動畫），
+     慢的用「秒/頁」顯示（給漫畫逐頁閱讀用，例如每 3/5/7 秒換一張）。 */
+  const SPEEDS = [0.0625, 0.125, 0.2, 0.33, 0.5, 1, 2, 3, 5, 7];
+  const speedLabel = i => {
+    const s = SPEEDS[i];
+    return s < 1 ? `${Math.round(1 / s)} fps` : `${s} 秒/頁`;
+  };
 
   /* ── 首頁 ───────────────────────────── */
   $("siteTitle").textContent = SITE.title;
@@ -434,11 +442,11 @@ footer{
 
   function play(){
     stop();
-    const fps = Number($("fps").value);
+    const sec = SPEEDS[Number($("fps").value)];
     timer = setInterval(() => {
       if (cur >= book.pages) { stop(); return; }
       show(cur + 1);
-    }, 1000 / fps);
+    }, sec * 1000);
     $("btnPlay").textContent = "❚❚";
     $("btnPlay").classList.add("on");
     $("btnPlay").setAttribute("aria-label", "暫停");
@@ -476,7 +484,7 @@ footer{
   $("btnPlay").onclick = () => timer ? stop() : play();
   scrub.oninput = () => { stop(); show(Number(scrub.value)); };
   $("fps").oninput = () => {
-    $("fpsVal").textContent = $("fps").value + " fps";
+    $("fpsVal").textContent = speedLabel(Number($("fps").value));
     if (timer) play();
   };
   $("btnGrid").onclick = () => {
