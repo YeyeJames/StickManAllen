@@ -108,10 +108,23 @@ body::before{
 .tally strong{display:block;font-size:26px;color:var(--ink);line-height:1.2}
 
 /* ── 書架 ───────────────────────────────── */
+.shelf-head{
+  display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;
+  gap:12px;margin:56px 0 20px;padding-bottom:8px;
+  border-bottom:1px solid rgba(34,36,42,.14);
+}
 .shelf-label{
   font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--ink-soft);
-  margin:56px 0 20px;padding-bottom:8px;border-bottom:1px solid rgba(34,36,42,.14);
 }
+.sort-toggle{display:flex;gap:6px;font-family:var(--mono);font-size:11px}
+.sortbtn{
+  appearance:none;cursor:pointer;border:1px solid rgba(34,36,42,.2);background:none;
+  color:var(--ink-soft);border-radius:20px;padding:4px 12px;letter-spacing:.05em;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.sortbtn:hover{border-color:rgba(34,36,42,.4)}
+.sortbtn.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.sortbtn:focus-visible{outline:2.5px solid var(--red);outline-offset:2px}
 .shelf{
   display:grid;gap:34px 26px;padding-bottom:80px;
   grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
@@ -291,7 +304,13 @@ footer{
     </div>
   </header>
 
-  <h2 class="shelf-label">全部筆記本 — 點一本開始看</h2>
+  <div class="shelf-head">
+    <h2 class="shelf-label">全部筆記本 — 點一本開始看</h2>
+    <div class="sort-toggle">
+      <button class="sortbtn on" id="sortAsc" type="button">舊→新</button>
+      <button class="sortbtn" id="sortDesc" type="button">新→舊</button>
+    </div>
+  </div>
   <div class="shelf" id="shelf"></div>
 
   <footer>
@@ -364,37 +383,55 @@ footer{
     `© ${SITE.startYear}–${new Date().getFullYear()} ${SITE.author}`;
 
   const shelf = $("shelf");
-  BOOKS.forEach((book, i) => {
-    const btn = document.createElement("button");
-    btn.className = "book";
-    btn.innerHTML = `
-      <div class="cover">
-        <div class="rings"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <img class="cover-img" alt="" loading="lazy">
-        <div class="spine-no">NO.${book.id}</div>
-      </div>
-      <div class="meta">
-        <h3></h3>
-        <p></p>
-      </div>`;
-    btn.querySelector("h3").textContent = book.title || `第 ${book.id} 本`;
-    btn.querySelector(".meta p").textContent =
-      `${book.date || ""}${book.date ? " · " : ""}${book.pages} 頁`;
+  function renderShelf(reversed){
+    shelf.innerHTML = "";
+    const order = BOOKS.map((_, i) => i);
+    if (reversed) order.reverse();
+    order.forEach(i => {
+      const book = BOOKS[i];
+      const btn = document.createElement("button");
+      btn.className = "book";
+      btn.innerHTML = `
+        <div class="cover">
+          <div class="rings"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <img class="cover-img" alt="" loading="lazy">
+          <div class="spine-no">NO.${book.id}</div>
+        </div>
+        <div class="meta">
+          <h3></h3>
+          <p></p>
+        </div>`;
+      btn.querySelector("h3").textContent = book.title || `第 ${book.id} 本`;
+      btn.querySelector(".meta p").textContent =
+        `${book.date || ""}${book.date ? " · " : ""}${book.pages} 頁`;
 
-    const img = btn.querySelector(".cover-img");
-    const path = src(book, 1);
-    img.src = path;
-    img.onerror = () => {
-      const ph = document.createElement("div");
-      ph.className = "cover-missing";
-      ph.textContent = `把圖片放在\n${path}`;
-      ph.style.whiteSpace = "pre-line";
-      img.replaceWith(ph);
-    };
+      const img = btn.querySelector(".cover-img");
+      const path = src(book, 1);
+      img.src = path;
+      img.onerror = () => {
+        const ph = document.createElement("div");
+        ph.className = "cover-missing";
+        ph.textContent = `把圖片放在\n${path}`;
+        ph.style.whiteSpace = "pre-line";
+        img.replaceWith(ph);
+      };
 
-    btn.addEventListener("click", () => open(i));
-    shelf.appendChild(btn);
-  });
+      btn.addEventListener("click", () => open(i));
+      shelf.appendChild(btn);
+    });
+  }
+  renderShelf(false);
+
+  $("sortAsc").onclick = () => {
+    renderShelf(false);
+    $("sortAsc").classList.add("on");
+    $("sortDesc").classList.remove("on");
+  };
+  $("sortDesc").onclick = () => {
+    renderShelf(true);
+    $("sortDesc").classList.add("on");
+    $("sortAsc").classList.remove("on");
+  };
 
   /* ── 閱讀器 ─────────────────────────── */
   const reader = $("reader"), pageImg = $("page"), missing = $("missing");
