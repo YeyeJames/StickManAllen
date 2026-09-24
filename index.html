@@ -475,22 +475,28 @@ footer{
     pageImg.classList.add("drop");
 
     const token = ++loadToken;
+    // 延遲顯示轉圈圈：圖片如果很快就載入完成（已快取），中間完全不會閃一下；
+    // 真的要等的時候才會出現，避免看起來像「一直在載入」。
+    const spinnerTimer = setTimeout(() => {
+      if (token !== loadToken) return;
+      pageImg.classList.add("loading");
+      spinner.hidden = false;
+    }, 250);
     const clearLoading = () => {
       if (token !== loadToken) return;
+      clearTimeout(spinnerTimer);
       pageImg.classList.remove("loading");
       spinner.hidden = true;
     };
-    pageImg.classList.add("loading");
-    spinner.hidden = false;
     pageImg.alt = `${book.title} 第 ${cur} 頁`;
     pageImg.onload = clearLoading;
     pageImg.src = path;
-    // 有些瀏覽器對已快取的圖片重設同一個 src 時不會再觸發 load 事件，
-    // 用 complete 立即檢查一次，並加個保險 timeout，避免圈圈卡住不消失。
-    if (pageImg.complete) clearLoading();
+    // 保險：有些瀏覽器對已快取的圖片重設同一個 src 不會再觸發 load，
+    // 加個 timeout 兜底，避免圈圈卡住不消失。
     setTimeout(clearLoading, 4000);
     pageImg.onerror = () => {
       if (token !== loadToken) return;
+      clearTimeout(spinnerTimer);
       pageImg.hidden = true;
       pageImg.classList.remove("loading");
       spinner.hidden = true;
