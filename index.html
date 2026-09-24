@@ -18,7 +18,7 @@
 <script>
 const SITE = {
   title: "火柴人筆記本",
-  author: "Allen",
+  author: "WHY123",
   intro: "從小學五年級開始，一本一頁一格，畫到現在。",
   startYear: "2024",
 };
@@ -87,8 +87,8 @@ body::before{
   font-family:var(--display);font-weight:700;
   font-size:clamp(2.6rem,9vw,4.6rem);line-height:1.05;letter-spacing:-.01em;
 }
-.byline{font-family:var(--mono);font-size:13px;color:var(--ink-soft);margin-top:14px}
-.byline b{color:var(--ink);font-weight:700}
+.byline{font-family:var(--mono);font-size:18px;color:var(--ink-soft);margin-top:14px}
+.byline b{color:var(--ink);font-weight:700;font-size:1.3em}
 .intro{max-width:34em;margin-top:18px;color:var(--ink-soft);font-size:15.5px}
 
 .tally{
@@ -206,9 +206,24 @@ footer{
 .stage img{
   max-width:100%;max-height:100%;object-fit:contain;background:#fff;
   border-radius:2px;box-shadow:0 14px 40px -10px rgba(0,0,0,.7);
+  transition:opacity .15s;
 }
+.stage img.loading{opacity:.4}
 .stage img.drop{animation:drop .16s ease-out}
 @keyframes drop{from{opacity:.25;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+.spinner{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:#EDEDEA;
+  background:rgba(10,10,12,.7);border-radius:20px;padding:8px 16px;
+  display:flex;align-items:center;gap:8px;pointer-events:none;z-index:3;
+}
+.spinner::before{
+  content:"";width:13px;height:13px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 .nav-zone{position:absolute;top:0;bottom:0;width:32%;cursor:pointer;border:0;background:none}
 .nav-zone.prev{left:0}
@@ -290,8 +305,6 @@ footer{
     <p class="intro" id="intro"></p>
     <div class="tally">
       <div>本數<strong id="tBooks">—</strong></div>
-      <div>總頁數<strong id="tPages">—</strong></div>
-      <div>創作期間<strong id="tSpan">—</strong></div>
     </div>
   </header>
 
@@ -321,6 +334,7 @@ footer{
   <div class="stage" id="stage">
     <img id="page" alt="" hidden>
     <div class="missing" id="missing" hidden></div>
+    <div class="spinner" id="spinner" hidden aria-live="polite">載入中…</div>
     <button class="nav-zone prev" id="zPrev" aria-label="上一頁"></button>
     <button class="nav-zone next" id="zNext" aria-label="下一頁"></button>
 
@@ -365,10 +379,7 @@ footer{
 
   const totalPages = BOOKS.reduce((s, b) => s + b.pages, 0);
   $("tBooks").textContent = BOOKS.length;
-  $("tPages").textContent = totalPages;
 
-  const dates = BOOKS.map(b => b.date).filter(Boolean).sort();
-  $("tSpan").textContent = dates.length ? `${dates[0]} – ${dates[dates.length - 1]}` : "—";
   $("stamp").textContent = `NO.01–${pad(BOOKS.length).slice(-2)} / ${totalPages} PAGES`;
   $("copyright").textContent =
     `© ${SITE.startYear}–${new Date().getFullYear()} ${SITE.author}`;
@@ -425,7 +436,7 @@ footer{
   };
 
   /* ── 閱讀器 ─────────────────────────── */
-  const reader = $("reader"), pageImg = $("page"), missing = $("missing");
+  const reader = $("reader"), pageImg = $("page"), missing = $("missing"), spinner = $("spinner");
   const scrub = $("scrub"), gridPanel = $("gridPanel"), thumbs = $("thumbs");
   let book = null, cur = 1, timer = null, lastFocus = null;
 
@@ -462,10 +473,18 @@ footer{
     pageImg.classList.remove("drop");
     void pageImg.offsetWidth;
     pageImg.classList.add("drop");
+    pageImg.classList.add("loading");
+    spinner.hidden = false;
     pageImg.alt = `${book.title} 第 ${cur} 頁`;
+    pageImg.onload = () => {
+      pageImg.classList.remove("loading");
+      spinner.hidden = true;
+    };
     pageImg.src = path;
     pageImg.onerror = () => {
       pageImg.hidden = true;
+      pageImg.classList.remove("loading");
+      spinner.hidden = true;
       missing.hidden = false;
       missing.innerHTML = `<b>找不到這一頁</b>預期的檔案位置：<br>${path}<br><br>` +
         `請確認檔名是 ${pad(cur)}.${EXT}，放在 ${FOLDER}/${book.id}/ 資料夾裡。`;
