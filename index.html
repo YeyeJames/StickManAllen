@@ -438,7 +438,7 @@ footer{
   /* ── 閱讀器 ─────────────────────────── */
   const reader = $("reader"), pageImg = $("page"), missing = $("missing"), spinner = $("spinner");
   const scrub = $("scrub"), gridPanel = $("gridPanel"), thumbs = $("thumbs");
-  let book = null, cur = 1, timer = null, lastFocus = null;
+  let book = null, cur = 1, timer = null, lastFocus = null, loadToken = 0;
 
   function open(index){
     book = BOOKS[index];
@@ -473,15 +473,24 @@ footer{
     pageImg.classList.remove("drop");
     void pageImg.offsetWidth;
     pageImg.classList.add("drop");
-    pageImg.classList.add("loading");
-    spinner.hidden = false;
-    pageImg.alt = `${book.title} 第 ${cur} 頁`;
-    pageImg.onload = () => {
+
+    const token = ++loadToken;
+    const clearLoading = () => {
+      if (token !== loadToken) return;
       pageImg.classList.remove("loading");
       spinner.hidden = true;
     };
+    pageImg.classList.add("loading");
+    spinner.hidden = false;
+    pageImg.alt = `${book.title} 第 ${cur} 頁`;
+    pageImg.onload = clearLoading;
     pageImg.src = path;
+    // 有些瀏覽器對已快取的圖片重設同一個 src 時不會再觸發 load 事件，
+    // 用 complete 立即檢查一次，並加個保險 timeout，避免圈圈卡住不消失。
+    if (pageImg.complete) clearLoading();
+    setTimeout(clearLoading, 4000);
     pageImg.onerror = () => {
+      if (token !== loadToken) return;
       pageImg.hidden = true;
       pageImg.classList.remove("loading");
       spinner.hidden = true;
