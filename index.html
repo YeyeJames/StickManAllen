@@ -36,7 +36,7 @@ const DIGITS = 3;         // 檔名補零位數：3 → 001.jpg
 const FOLDER = "books";   // 放圖片的資料夾名稱
 
 // 每次修改這個檔案都要改一下這個值，開著舊版網頁的瀏覽器才會自動重新載入最新版。
-const APP_VERSION = "2026-09-25-2";
+const APP_VERSION = "2026-09-25-3";
 </script>
 
 <style>
@@ -240,6 +240,7 @@ footer{
   line-height:2;padding:24px;max-width:32em;
 }
 .missing b{color:#fff;display:block;font-size:14px;margin-bottom:8px}
+.missing .retry{position:relative;z-index:5;font:inherit;font-size:14px;color:#fff;background:var(--red);border:0;border-radius:999px;padding:8px 20px;cursor:pointer}
 
 .rfoot{
   position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);z-index:6;
@@ -495,20 +496,34 @@ footer{
     };
     pageImg.alt = `${book.title} 第 ${cur} 頁`;
     pageImg.onload = clearLoading;
-    pageImg.src = path;
-    // 保險：有些瀏覽器對已快取的圖片重設同一個 src 不會再觸發 load，
-    // 加個 timeout 兜底，避免圈圈卡住不消失。
-    setTimeout(clearLoading, 4000);
+    // 手機網路不穩時圖片偶爾會下載失敗，先自動重試幾次（加參數避開壞掉的快取），
+    // 都失敗才顯示錯誤訊息。
+    let retries = 0;
     pageImg.onerror = () => {
       if (token !== loadToken) return;
+      if (retries < 3) {
+        retries++;
+        pageImg.classList.add("loading");
+        spinner.hidden = false;
+        setTimeout(() => {
+          if (token === loadToken) pageImg.src = `${path}?r=${Date.now()}`;
+        }, 600 * retries);
+        return;
+      }
       clearTimeout(spinnerTimer);
       pageImg.hidden = true;
       pageImg.classList.remove("loading");
       spinner.hidden = true;
       missing.hidden = false;
-      missing.innerHTML = `<b>找不到這一頁</b>預期的檔案位置：<br>${path}<br><br>` +
-        `請確認檔名是 ${pad(cur)}.${EXT}，放在 ${FOLDER}/${book.id}/ 資料夾裡。`;
+      missing.innerHTML = `<b>這一頁載入失敗</b>可能是網路不穩，請再試一次。<br><br>` +
+        `<button type="button" class="retry">重新載入</button><br><br>` +
+        `<small>如果一直失敗，請確認檔案 ${path} 存在。</small>`;
+      missing.querySelector(".retry").onclick = () => show(cur);
     };
+    pageImg.src = path;
+    // 保險：有些瀏覽器對已快取的圖片重設同一個 src 不會再觸發 load，
+    // 加個 timeout 兜底，避免圈圈卡住不消失。
+    setTimeout(() => { if (retries === 0) clearLoading(); }, 4000);
     $("rNow").textContent = cur;
     scrub.value = cur;
     for (let k = 1; k <= 4; k++) {
