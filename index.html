@@ -34,6 +34,9 @@ const BOOKS = [
 const EXT = "jpg";        // 圖片副檔名，如果是 png 就改成 "png"
 const DIGITS = 3;         // 檔名補零位數：3 → 001.jpg
 const FOLDER = "books";   // 放圖片的資料夾名稱
+
+// 每次修改這個檔案都要改一下這個值，開著舊版網頁的瀏覽器才會自動重新載入最新版。
+const APP_VERSION = "2026-09-25-1";
 </script>
 
 <style>
@@ -604,6 +607,23 @@ footer{
     const i = BOOKS.findIndex(b => b.id === hash);
     if (i >= 0) open(i);
   }
+
+  /* 自動更新：抓最新的 index.html（繞過瀏覽器與 CDN 快取），版本不同就重新載入 */
+  async function checkForUpdate(){
+    try {
+      const res = await fetch(`${location.pathname}?t=${Date.now()}`, { cache: "no-store" });
+      const m = (await res.text()).match(/APP_VERSION = "([^"]+)"/);
+      const latest = m && m[1];
+      if (!latest || latest === APP_VERSION) return;
+      if (sessionStorage.getItem("reloadedFor") === latest) return;
+      sessionStorage.setItem("reloadedFor", latest);
+      location.replace(`${location.pathname}?v=${encodeURIComponent(latest)}${location.hash}`);
+    } catch (e) {}
+  }
+  checkForUpdate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkForUpdate();
+  });
 })();
 </script>
 </body>
