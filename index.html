@@ -36,7 +36,7 @@ const DIGITS = 3;         // 檔名補零位數：3 → 001.jpg
 const FOLDER = "books";   // 放圖片的資料夾名稱
 
 // 每次修改這個檔案都要改一下這個值，開著舊版網頁的瀏覽器才會自動重新載入最新版。
-const APP_VERSION = "2026-09-26-1";
+const APP_VERSION = "2026-09-26-2";
 </script>
 
 <style>
@@ -491,7 +491,7 @@ footer{
   /* ── 閱讀器 ─────────────────────────── */
   const reader = $("reader"), pageImg = $("page"), missing = $("missing"), spinner = $("spinner");
   const scrub = $("scrub"), gridPanel = $("gridPanel"), thumbs = $("thumbs");
-  let book = null, cur = 1, timer = null, lastFocus = null, loadToken = 0;
+  let book = null, cur = 1, timer = null, lastFocus = null, loadToken = 0, lastShow = 0;
 
   function open(index){
     book = BOOKS[index];
@@ -523,9 +523,14 @@ footer{
     const path = src(book, cur);
     pageImg.hidden = false;
     missing.hidden = true;
+    // 快速連續翻頁（前後比對劇情）時不做淡入動畫，畫面直接切換、不閃爍
+    const now = Date.now(), rapid = now - lastShow < 400;
+    lastShow = now;
     pageImg.classList.remove("drop");
-    void pageImg.offsetWidth;
-    pageImg.classList.add("drop");
+    if (!rapid) {
+      void pageImg.offsetWidth;
+      pageImg.classList.add("drop");
+    }
 
     const token = ++loadToken;
     // 延遲顯示轉圈圈：圖片如果很快就載入完成（已快取），中間完全不會閃一下；
