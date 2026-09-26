@@ -36,7 +36,7 @@ const DIGITS = 3;         // 檔名補零位數：3 → 001.jpg
 const FOLDER = "books";   // 放圖片的資料夾名稱
 
 // 每次修改這個檔案都要改一下這個值，開著舊版網頁的瀏覽器才會自動重新載入最新版。
-const APP_VERSION = "2026-09-25-3";
+const APP_VERSION = "2026-09-26-1";
 </script>
 
 <style>
@@ -369,6 +369,54 @@ footer{
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(DIGITS, "0");
   const src = (book, n) => `${FOLDER}/${book.id}/${pad(n)}.${EXT}`;
+  // 小張縮圖（書架封面、縮圖列表用），由 tools/optimize_images.py 產生
+  const thumbSrc = (book, n) => `${FOLDER}/${book.id}/thumbs/${pad(n)}.${EXT}`;
+  // 縮圖不存在時退回原圖
+  const withFallback = (img, book, n, onFail) => {
+    img.onerror = () => {
+      img.onerror = onFail || null;
+      img.src = src(book, n);
+    };
+    img.src = thumbSrc(book, n);
+  };
+
+  /* ── 背景預先下載整本 ─────────────────
+     打開一本書（或在首頁閒置時的最新一本）就在背景把每一頁抓下來，
+     存在記憶體裡。之後不管跳到哪一頁都是直接顯示，不用再等網路。
+     正在等目前這一頁時會先暫停，讓它優先下載。 */
+  const pre = { book: null, urls: new Map(), inflight: new Set(), queue: [], active: 0, gen: 0, paused: false };
+  function preloadBook(b, from){
+    if (pre.book !== b) {
+      for (const u of pre.urls.values()) URL.revokeObjectURL(u);
+      pre.urls.clear();
+      pre.inflight = new Set();
+      pre.book = b;
+      pre.gen++;
+    }
+    pre.queue = [];
+    for (let k = 0; k < b.pages; k++) {
+      const n = (from - 1 + k) % b.pages + 1;
+      if (!pre.urls.has(n) && !pre.inflight.has(n)) pre.queue.push(n);
+    }
+    pump();
+  }
+  function pump(){
+    while (!pre.paused && pre.active < 3 && pre.queue.length) {
+      const n = pre.queue.shift(), b = pre.book, gen = pre.gen, inflight = pre.inflight;
+      pre.active++;
+      inflight.add(n);
+      fetch(src(b, n))
+        .then(r => (r.ok ? r.blob() : null))
+        .catch(() => null)
+        .then(blob => {
+          inflight.delete(n);
+          if (blob && gen === pre.gen) pre.urls.set(n, URL.createObjectURL(blob));
+          pre.active--;
+          pump();
+        });
+    }
+  }
+  const readyUrl = (b, n) => (pre.book === b && pre.urls.get(n)) || null;
 
   /* 播放速度：index 對應每頁停留秒數。快的用 fps 顯示（連續動畫），
      慢的用「秒/頁」顯示（給漫畫逐頁閱讀用，例如每 3/5/7 秒換一張）。 */
@@ -415,14 +463,13 @@ footer{
 
       const img = btn.querySelector(".cover-img");
       const path = src(book, 1);
-      img.src = path;
-      img.onerror = () => {
+      withFallback(img, book, 1, () => {
         const ph = document.createElement("div");
         ph.className = "cover-missing";
         ph.textContent = `把圖片放在\n${path}`;
         ph.style.whiteSpace = "pre-line";
         img.replaceWith(ph);
-      };
+      });
 
       btn.addEventListener("click", () => open(i));
       shelf.appendChild(btn);
@@ -490,6 +537,8 @@ footer{
     }, 250);
     const clearLoading = () => {
       if (token !== loadToken) return;
+      pre.paused = false;
+      pump();
       clearTimeout(spinnerTimer);
       pageImg.classList.remove("loading");
       spinner.hidden = true;
@@ -511,6 +560,8 @@ footer{
         return;
       }
       clearTimeout(spinnerTimer);
+      pre.paused = false;
+      pump();
       pageImg.hidden = true;
       pageImg.classList.remove("loading");
       spinner.hidden = true;
@@ -520,15 +571,16 @@ footer{
         `<small>如果一直失敗，請確認檔案 ${path} 存在。</small>`;
       missing.querySelector(".retry").onclick = () => show(cur);
     };
-    pageImg.src = path;
+    const ready = readyUrl(book, cur);
+    // 這一頁還沒下載好：先暫停背景下載，把頻寬讓給它
+    if (!ready) pre.paused = true;
+    pageImg.src = ready || path;
+    preloadBook(book, cur % book.pages + 1);
     // 保險：有些瀏覽器對已快取的圖片重設同一個 src 不會再觸發 load，
     // 加個 timeout 兜底，避免圈圈卡住不消失。
     setTimeout(() => { if (retries === 0) clearLoading(); }, 4000);
     $("rNow").textContent = cur;
     scrub.value = cur;
-    for (let k = 1; k <= 4; k++) {
-      if (cur + k <= book.pages) new Image().src = src(book, cur + k);
-    }
     const active = thumbs.querySelector(".here");
     if (active) active.classList.remove("here");
     const t = thumbs.children[cur - 1];
@@ -566,7 +618,7 @@ footer{
     for (let n = 1; n <= book.pages; n++) {
       const b = document.createElement("button");
       b.innerHTML = `<img loading="lazy" alt=""><span>${pad(n)}</span>`;
-      b.querySelector("img").src = src(book, n);
+      withFallback(b.querySelector("img"), book, n);
       b.addEventListener("click", () => {
         show(n);
         gridPanel.classList.remove("open");
@@ -636,6 +688,11 @@ footer{
       location.replace(`${location.pathname}?v=${encodeURIComponent(latest)}${location.hash}`);
     } catch (e) {}
   }
+  // 首頁閒置時先把最新一本抓下來，點進去就能直接翻（手機開省流量模式時不做）
+  if (!(navigator.connection && navigator.connection.saveData)) {
+    setTimeout(() => { if (!pre.book) preloadBook(BOOKS[BOOKS.length - 1], 1); }, 2000);
+  }
+
   checkForUpdate();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") checkForUpdate();
