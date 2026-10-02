@@ -21,7 +21,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "books")
 
 
 def save(im, path, q):
-    im.save(path, "JPEG", quality=q, optimize=True, progressive=True)
+    im.save(path, "JPEG", quality=q, optimize=True)  # 一般（baseline）JPEG：手機解碼較快，不會先出現模糊版
 
 
 def process_book(book_dir):
