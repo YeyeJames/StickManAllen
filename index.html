@@ -36,7 +36,7 @@ const DIGITS = 3;         // 檔名補零位數：3 → 001.jpg
 const FOLDER = "books";   // 放圖片的資料夾名稱
 
 // 每次修改這個檔案都要改一下這個值，開著舊版網頁的瀏覽器才會自動重新載入最新版。
-const APP_VERSION = "2026-09-26-2";
+const APP_VERSION = "2026-10-02-1";
 </script>
 
 <style>
@@ -112,6 +112,7 @@ body::before{
 .shelf-label{
   font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--ink-soft);
 }
+.cache-note{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:6px;letter-spacing:.05em}
 .sort-toggle{display:flex;gap:6px;font-family:var(--mono);font-size:11px}
 .sortbtn{
   appearance:none;cursor:pointer;border:1px solid rgba(34,36,42,.2);background:none;
@@ -315,7 +316,10 @@ footer{
   </header>
 
   <div class="shelf-head">
-    <h2 class="shelf-label">全部筆記本 — 點一本開始看</h2>
+    <div>
+      <h2 class="shelf-label">全部筆記本 — 點一本開始看</h2>
+      <div class="cache-note" id="cacheNote" hidden></div>
+    </div>
     <div class="sort-toggle">
       <button class="sortbtn on" id="sortAsc" type="button">舊→新</button>
       <button class="sortbtn" id="sortDesc" type="button">新→舊</button>
@@ -368,9 +372,11 @@ footer{
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(DIGITS, "0");
-  const src = (book, n) => `${FOLDER}/${book.id}/${pad(n)}.${EXT}`;
+  // book.rev：換掉某本已上傳的頁面時改這個值，裝置上存的舊圖就會被換掉
+  const rev = book => (book.rev ? `?v=${book.rev}` : "");
+  const src = (book, n) => `${FOLDER}/${book.id}/${pad(n)}.${EXT}${rev(book)}`;
   // 小張縮圖（書架封面、縮圖列表用），由 tools/optimize_images.py 產生
-  const thumbSrc = (book, n) => `${FOLDER}/${book.id}/thumbs/${pad(n)}.${EXT}`;
+  const thumbSrc = (book, n) => `${FOLDER}/${book.id}/thumbs/${pad(n)}.${EXT}${rev(book)}`;
   // 縮圖不存在時退回原圖
   const withFallback = (img, book, n, onFail) => {
     img.onerror = () => {
@@ -380,43 +386,115 @@ footer{
     img.src = thumbSrc(book, n);
   };
 
-  /* ── 背景預先下載整本 ─────────────────
-     打開一本書（或在首頁閒置時的最新一本）就在背景把每一頁抓下來，
-     存在記憶體裡。之後不管跳到哪一頁都是直接顯示，不用再等網路。
-     正在等目前這一頁時會先暫停，讓它優先下載。 */
-  const pre = { book: null, urls: new Map(), inflight: new Set(), queue: [], active: 0, gen: 0, paused: false };
-  function preloadBook(b, from){
+  /* ── 背景下載全部漫畫 ─────────────────
+     打開網頁後就在背景把「每一本、每一頁」抓下來，存進這台裝置（Cache Storage，
+     關掉網頁也還在；sw.js 讓之後看圖直接從裝置讀）。
+     正在看的那本優先，而且會另外放一份在記憶體裡，快速前後翻頁不用等。
+     正在等目前這一頁時先暫停背景下載，把頻寬讓給它。
+     手機鎖螢幕或切到背景時瀏覽器會暫停網頁，回到畫面後從中斷處繼續，已下載的不會重抓。 */
+  const PAGE_CACHE = "pages-v1";
+  const abs = u => new URL(u, location.href).href;
+  const pre = {
+    book: null, urls: new Map(), inflight: new Set(), queue: [], active: 0, gen: 0,
+    paused: false, cache: null, cached: null, from: 1, done: 0, total: 0,
+  };
+  const allPageUrls = () => BOOKS.flatMap(b => Array.from({ length: b.pages }, (_, i) => abs(src(b, i + 1))));
+  (async () => {
+    try {
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      pre.cache = await caches.open(PAGE_CACHE);
+      const keys = await pre.cache.keys();
+      // 清掉已經不在網站上（或改版前）的舊圖
+      const keep = new Set(allPageUrls());
+      BOOKS.forEach(b => { for (let n = 1; n <= b.pages; n++) keep.add(abs(thumbSrc(b, n))); });
+      pre.cached = new Set();
+      for (const req of keys) {
+        if (keep.has(req.url)) pre.cached.add(req.url);
+        else pre.cache.delete(req);
+      }
+    } catch (e) {
+      pre.cache = null;
+      pre.cached = new Set();
+    }
+    schedule();
+  })();
+  async function getPage(url){
+    if (pre.cache) {
+      const hit = await pre.cache.match(url, { ignoreVary: true });
+      if (hit) return hit;
+    }
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    if (pre.cache) {
+      try { await pre.cache.put(url, res.clone()); }
+      catch (e) { pre.cache = null; } // 裝置空間不夠：改成只存記憶體
+    }
+    return res;
+  }
+  function setBook(b, from){
     if (pre.book !== b) {
       for (const u of pre.urls.values()) URL.revokeObjectURL(u);
       pre.urls.clear();
-      pre.inflight = new Set();
       pre.book = b;
       pre.gen++;
     }
-    pre.queue = [];
-    for (let k = 0; k < b.pages; k++) {
-      const n = (from - 1 + k) % b.pages + 1;
-      if (!pre.urls.has(n) && !pre.inflight.has(n)) pre.queue.push(n);
+    pre.from = from;
+    schedule();
+  }
+  function schedule(){
+    if (!pre.cached) return; // 還在讀取裝置上已存的清單
+    const q = [], b = pre.book;
+    if (b) {
+      for (let k = 0; k < b.pages; k++) {
+        const n = (pre.from - 1 + k) % b.pages + 1;
+        if (!pre.urls.has(n)) q.push({ b, n, mem: true, url: src(b, n) });
+      }
     }
+    if (pre.cache) {
+      // 其他本：最新的先
+      BOOKS.slice().reverse().forEach(o => {
+        if (o === b) return;
+        for (let n = 1; n <= o.pages; n++) {
+          const url = src(o, n);
+          if (!pre.cached.has(abs(url))) q.push({ b: o, n, mem: false, url });
+        }
+      });
+    }
+    pre.queue = q.filter(it => !pre.inflight.has(it.url));
     pump();
+    progress();
   }
   function pump(){
     while (!pre.paused && pre.active < 3 && pre.queue.length) {
-      const n = pre.queue.shift(), b = pre.book, gen = pre.gen, inflight = pre.inflight;
+      const it = pre.queue.shift(), gen = pre.gen;
       pre.active++;
-      inflight.add(n);
-      fetch(src(b, n))
-        .then(r => (r.ok ? r.blob() : null))
-        .catch(() => null)
-        .then(blob => {
-          inflight.delete(n);
-          if (blob && gen === pre.gen) pre.urls.set(n, URL.createObjectURL(blob));
+      pre.inflight.add(it.url);
+      getPage(it.url)
+        .then(async res => {
+          if (!res) return;
+          if (pre.cache) pre.cached.add(abs(it.url));
+          if (it.mem && gen === pre.gen) pre.urls.set(it.n, URL.createObjectURL(await res.blob()));
+        })
+        .catch(() => {})
+        .then(() => {
+          pre.inflight.delete(it.url);
           pre.active--;
+          progress();
           pump();
         });
     }
   }
   const readyUrl = (b, n) => (pre.book === b && pre.urls.get(n)) || null;
+  function progress(){
+    const el = $("cacheNote");
+    if (!el || !pre.cache) return;
+    const all = allPageUrls();
+    const have = all.filter(u => pre.cached.has(u)).length;
+    el.hidden = false;
+    el.textContent = have >= all.length
+      ? "✓ 全部已存到這台裝置，可以快速翻頁"
+      : `下載到這台裝置中… ${Math.floor((have / all.length) * 100)}%`;
+  }
 
   /* 播放速度：index 對應每頁停留秒數。快的用 fps 顯示（連續動畫），
      慢的用「秒/頁」顯示（給漫畫逐頁閱讀用，例如每 3/5/7 秒換一張）。 */
@@ -580,7 +658,7 @@ footer{
     // 這一頁還沒下載好：先暫停背景下載，把頻寬讓給它
     if (!ready) pre.paused = true;
     pageImg.src = ready || path;
-    preloadBook(book, cur % book.pages + 1);
+    setBook(book, cur % book.pages + 1);
     // 保險：有些瀏覽器對已快取的圖片重設同一個 src 不會再觸發 load，
     // 加個 timeout 兜底，避免圈圈卡住不消失。
     setTimeout(() => { if (retries === 0) clearLoading(); }, 4000);
@@ -693,10 +771,7 @@ footer{
       location.replace(`${location.pathname}?v=${encodeURIComponent(latest)}${location.hash}`);
     } catch (e) {}
   }
-  // 首頁閒置時先把最新一本抓下來，點進去就能直接翻（手機開省流量模式時不做）
-  if (!(navigator.connection && navigator.connection.saveData)) {
-    setTimeout(() => { if (!pre.book) preloadBook(BOOKS[BOOKS.length - 1], 1); }, 2000);
-  }
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
   checkForUpdate();
   document.addEventListener("visibilitychange", () => {

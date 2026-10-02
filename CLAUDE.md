@@ -6,5 +6,8 @@ Static GitHub Pages site (`index.html` only) for WHY123's stick-figure comic not
 - After adding or replacing pages, run `python3 tools/optimize_images.py NN`
   (needs Pillow) to shrink pages to 1600px and generate `books/NN/thumbs/`.
 - Update the book's `pages` in `BOOKS` in `index.html`.
+- Pages are cached permanently on visitors' devices (`sw.js`, cache `pages-v1`). When
+  replacing/rotating pages that were already published, set or bump that book's `rev`
+  in `BOOKS` (e.g. `rev: 2`) so devices fetch the new images. Adding new pages needs no `rev`.
 - Bump `APP_VERSION` in `index.html` on every change to that file (open pages auto-reload on it).
 - Commit and push directly to `main`.
